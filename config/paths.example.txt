@@ -1,0 +1,67 @@
+[general]
+# Folder where all output .json files will be stored
+JSON_FOLDER = C:/Users/Public/NPVR-data/scripts/vlc/.JSON
+
+# Root folder where recordings are stored
+RECORDINGS_FOLDER = D:/NEXT PVR/RecordingDirectory
+
+# Log output path
+LOG_PATH = C:/Users/Public/NPVR-data/scripts/vlc/logs
+
+# Working/temp directory
+TEMP_FOLDER = C:/Users/Public/NPVR-data/scripts/vlc/tmp
+
+# Operational settings
+USE_KODI = true
+USE_NEXTPVR = true
+OPERATION_MODE = move
+CREATE_NFO = true
+
+[kodi]
+# IP address for Kodi using adb for access
+KODI_IP = 192.168.0.127
+
+# Kodi metadata export template
+KODI_METADATA_TEMPLATE = C:/Users/Public/NPVR-data/scripts/vlc/.JSON/kodi_export.json
+
+# Optional path to ADB, or leave blank if on system path
+ADB_PATH =
+
+[tmdb]
+TMDB_API_KEY = yourtmdbapikey
+TMDB_PASSWORD = yourtmdbpassword
+
+[trakt]
+TRAKT_CLIENT_ID = traktclientid
+TRAKT_CLIENT_SECRET = traktclientsecret
+
+[tvmaze]
+TVMAZE_API_KEY = tvmazeapikey
+
+[meta_providers]
+# more providers can be added by creating the provider fetch script and adding the key name.
+tvmaze = enabled
+tmdb = enabled
+trakt = enabled
+
+[series_paths]
+# Path to existing series folder in flat format, no folders.  Each .ts or other media file must have an .xml metadata file.
+series_name_1 = Ax Men
+series_path_1 = D:/NEXT PVR/RecordingDirectory/Ax Men
+
+series_name_2 = FBI
+series_path_2 = D:/NEXT PVR/RecordingDirectory/FBI
+
+series_name_3 = Mission Impossible
+series_path_3 = D:/NEXT PVR/RecordingDirectory/Mission Impossible
+
+series_name_4 = The A-Team
+series_path_4 = D:/NEXT PVR/RecordingDirectory/The A-Team
+
+series_name_5 = The F.B.I
+series_path_5 = D:/NEXT PVR/RecordingDirectory/The F.B.I
+
+[library_paths]
+# These are the output paths, which will need to be shared with the media player ie kodi etc.
+TV_LIBRARY_PATH = E:/media_library/tv_series
+MOVIE_LIBRARY_PATH = E:/media_library/movies
