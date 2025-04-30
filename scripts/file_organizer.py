@@ -1,5 +1,5 @@
 # file_organizer.py
-# Version 0.9.4
+# Version 0.9.5
 # Change Log:
 # - Restored version with NFO writing only (no move/delete)
 # - Uses paths.txt
@@ -14,195 +14,143 @@
 # - 2025-04-19: Normalize log file output to use / without a mix, which is unix style file address
 # - 2025-04-22: Fixed AttributeError in group_and_write to handle new JSON structure with matches and unmatched sections
 # - 2025-04-22: Updated write_nfo to place unmatched episodes in 'Unmatched Episodes' folder
+# - 2025-04-30 Update .json format
+# - 2025-04-30 Update to use a flag to make the script move the files into place.
 
 import os
 import json
-import re
-import sys
+import argparse
+import logging
 from datetime import datetime
+import shutil
 
-SERIES_NAME = None
-SERIES_FOLDER_PATH = None
-SERIES_METADATA_JSON = None
-TV_LIBRARY_PATH = None
-KODI_JSON = None
-LOG_PATH = None
-
-def log_event(message):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_file = os.path.join(LOG_PATH, f"file_organizer_{SERIES_NAME.replace(' ', '_')}.log")
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] {message}\n")
-
-def log_action(message):
-    # Normalize paths in message to use forward slashes
-    normalized = message.replace("\\", "/")
-    action_file = os.path.join(LOG_PATH, f"file_organizer_actions_{SERIES_NAME.replace(' ', '_')}.log")
-    with open(action_file, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{SERIES_NAME}] {normalized}\n")
+def setup_logging(series_name):
+    series_slug = series_name.lower().replace(" ", "_")
+    log_dir = os.path.join("logs", series_slug)
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "file_organizer.log")
+    
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format="[%(asctime)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    return series_slug
 
 def load_paths():
-    global SERIES_FOLDER_PATH, SERIES_METADATA_JSON, TV_LIBRARY_PATH, KODI_JSON, LOG_PATH
-    config = {}
-    with open("paths.txt", "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            config[key.strip()] = value.strip().strip('"')
+    paths = {}
+    try:
+        with open("paths.txt", "r") as f:
+            current_section = None
+            for line in f:
+                line = line.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    current_section = line[1:-1]
+                elif "=" in line and current_section == "library_paths":
+                    key, value = line.split("=", 1)
+                    paths[key.strip()] = value.strip()
+    except FileNotFoundError:
+        logging.error("paths.txt not found")
+        raise
+    paths["JSON_FOLDER"] = paths.get("JSON_FOLDER", "data")
+    return paths
 
-    for i in range(1, 50):
-        if config.get(f"series_name_{i}", "").strip('"') == SERIES_NAME:
-            SERIES_FOLDER_PATH = config.get(f"series_path_{i}", "").strip('"')
-            break
-
-    JSON_FOLDER = config.get("JSON_FOLDER", ".")
-    LOG_PATH = config.get("LOG_PATH", ".")
-    KODI_JSON = config.get("KODI_METADATA_TEMPLATE", "")
-    TV_LIBRARY_PATH = config.get("TV_LIBRARY_PATH", ".")
-
-    SERIES_METADATA_JSON = os.path.join(JSON_FOLDER, f"{SERIES_NAME}.json")
-    PROCESSED_JSON = os.path.join(JSON_FOLDER, f"{SERIES_NAME.replace(' ', '_')}_Processed.json")
-    return PROCESSED_JSON
-
-def load_processed(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def load_kodi_data():
-    if not os.path.exists(KODI_JSON):
-        return set()
-    with open(KODI_JSON, "r", encoding="utf-8") as f:
-        kodi = json.load(f)
-    return set(entry.get("file") for entry in kodi if entry.get("playcount", 0) > 0)
-
-def clean_name(s):
-    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
-
-def write_nfo(ep_meta, episode_path, watched):
-    is_unmatched = "reason" in ep_meta and ep_meta["reason"].startswith("No match")
-    season = int(ep_meta["season"]) if "season" in ep_meta else 0
-    episode = int(ep_meta["episode"]) if "episode" in ep_meta else 0
-    title_list = ep_meta.get("titles", [])
-    title = next((t for t in title_list if t.strip()), ep_meta.get("title", ep_meta.get("subtitle", "Unknown")))
-    plot = ep_meta.get("overview", ep_meta.get("description", ""))
-    airdate = ep_meta.get("air_date", "")
-    playcount = "1" if watched else "0"
-
-    if is_unmatched:
-        folder = os.path.join(TV_LIBRARY_PATH, SERIES_NAME, "Unmatched Episodes")
-        filename = f"{SERIES_NAME.replace(' ', '.')}.{clean_name(title)}.nfo"
-    else:
-        folder = os.path.join(TV_LIBRARY_PATH, SERIES_NAME, f"Season {season:02d}")
-        subtitle_clean = re.sub(r'\W+', '_', title.lower()) if title else "unknown"
-        filename = f"{SERIES_NAME.replace(' ', '.')}.S{season:02d}E{episode:02d}.{subtitle_clean}.nfo"
+def load_processed_json(series_name, json_folder):
+    series_slug = series_name.lower().replace(" ", "_")
+    json_path = os.path.join(json_folder, series_slug, f"{series_name}_Processed.json")
+    logging.info(f"Loading JSON from {json_path}")
     
-    os.makedirs(folder, exist_ok=True)
-    fullpath = os.path.join(folder, filename)
+    if not os.path.exists(json_path):
+        logging.error(f"JSON file not found: {json_path}")
+        return []
+    
+    try:
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        episodes = []
+        for season in data.get("seasons", []):
+            for episode in season.get("episodes", []):
+                episode["season_number"] = season["season_number"]
+                episodes.append(episode)
+        logging.info(f"Loaded {len(episodes)} episodes from Processed.json")
+        return episodes
+    except Exception as e:
+        logging.error(f"Error loading JSON: {str(e)}")
+        return []
 
-    lines = [
-        "<?xml version='1.0' encoding='utf-8'?>",
-        "<episodedetails>",
-        f"  <title>{title}</title>",
-        f"  <season>{season}</season>",
-        f"  <episode>{episode}</episode>",
-        f"  <plot>{plot}</plot>",
-        f"  <aired>{airdate}</aired>",
-        f"  <playcount>{playcount}</playcount>",
-        f"  <showtitle>{SERIES_NAME}</showtitle>",
-        "</episodedetails>"
-    ]
+def create_nfo_file(series_name, episode, output_path):
+    nfo_path = os.path.splitext(output_path)[0] + ".nfo"
+    season = episode["season_number"]
+    episode_num = episode["episode_number"]
+    title = episode["titles"][0] if episode["titles"] else "Unknown"
+    
+    nfo_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<episodedetails>
+    <title>{title}</title>
+    <season>{season}</season>
+    <episode>{episode_num}</episode>
+</episodedetails>
+"""
+    os.makedirs(os.path.dirname(nfo_path), exist_ok=True)
+    with open(nfo_path, "w") as f:
+        f.write(nfo_content)
+    logging.info(f"Created NFO: {nfo_path}")
 
-    with open(fullpath, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    log_action(f"NFO CREATED: {fullpath}")
-
-def group_and_write(processed, kodi_watched):
-    # Process matches
-    for key, entry in processed.get("matches", {}).items():
-        originals = entry.get("originals", [])
-        broken = [f for f in originals if f.get("broken")]
-        clean = [f for f in originals if not f.get("broken")]
-
-        for b in broken:
-            log_action(f"TO BE DELETED (broken): {b['path']}")
-
-        if not clean:
-            continue
-
-        best = max(clean, key=lambda f: (f.get("timing_exists", False), f["size"]))
-        ep_meta = entry.get("episode_meta")
-        if not ep_meta:
-            log_event(f"No episode_meta for {key}, skipping.")
-            continue
-
-        raw_subtitle = best.get("subtitle", "").strip()
-        if raw_subtitle:
-            log_action(f"Subtitle: {raw_subtitle}")
-
-        dest_file = f"{SERIES_NAME.replace(' ', '.')}.S{ep_meta['season']:02d}E{ep_meta['episode']:02d}.{clean_name(raw_subtitle or ep_meta.get('title', 'unknown'))}.ts"
-        dest_path = os.path.join(TV_LIBRARY_PATH, SERIES_NAME, f"Season {ep_meta['season']:02d}", dest_file)
-
-        log_action(f"KEEP AND RENAME: {best['path']} → {dest_path}")
-
-        for f in clean:
-            if f["path"] != best["path"]:
-                log_action(f"TO BE DELETED (dupe): {f['path']}")
-
-        watched = best["path"] in kodi_watched
-        write_nfo(ep_meta, best["path"], watched)
-
-    # Process unmatched
-    for entry in processed.get("unmatched", []):
-        originals = entry.get("originals", [])
-        broken = [f for f in originals if f.get("broken")]
-        clean = [f for f in originals if not f.get("broken")]
-
-        for b in broken:
-            log_action(f"TO BE DELETED (broken): {b['path']}")
-
-        if not clean:
-            continue
-
-        best = max(clean, key=lambda f: (f.get("timing_exists", False), f["size"]))
-        ep_meta = entry.get("episode_meta")
-        if not ep_meta:
-            log_event(f"No episode_meta for unmatched entry, skipping.")
-            continue
-
-        raw_subtitle = best.get("subtitle", "").strip()
-        if raw_subtitle:
-            log_action(f"Subtitle: {raw_subtitle}")
-
-        # Use subtitle for unmatched entries since no season/episode
-        dest_file = f"{SERIES_NAME.replace(' ', '.')}.{clean_name(raw_subtitle or 'unknown')}.ts"
-        dest_path = os.path.join(TV_LIBRARY_PATH, SERIES_NAME, "Unmatched Episodes", dest_file)
-
-        log_action(f"KEEP AND RENAME: {best['path']} → {dest_path}")
-
-        for f in clean:
-            if f["path"] != best["path"]:
-                log_action(f"TO BE DELETED (dupe): {f['path']}")
-
-        watched = best["path"] in kodi_watched
-        write_nfo(ep_meta, best["path"], watched)
+def organize_files(series_name, episodes, tv_library_path, move_files=False):
+    for episode in episodes:
+        season = episode["season_number"]
+        episode_num = episode["episode_number"]
+        title = episode["titles"][0] if episode["titles"] else "Unknown"
+        season_str = f"Season {season:02d}"
+        filename = f"{series_name} - S{season:02d}E{episode_num:02d} - {title}.ts"
+        output_dir = os.path.join(tv_library_path, series_name, season_str)
+        output_path = os.path.join(output_dir, filename)
+        
+        logging.info(f"Processing episode S{season:02d}E{episode_num:02d}: {title}")
+        create_nfo_file(series_name, episode, output_path)
+        
+        if move_files:
+            for file in episode.get("files", []):
+                if not file["broken"]:
+                    src_path = file["path"]
+                    if os.path.exists(src_path):
+                        os.makedirs(output_dir, exist_ok=True)
+                        shutil.move(src_path, output_path)
+                        logging.info(f"Moved file: {src_path} -> {output_path}")
+                        
+                        # Move associated .xml and .edl files
+                        for ext in [".xml", ".edl"]:
+                            src_ext = os.path.splitext(src_path)[0] + ext
+                            dst_ext = os.path.splitext(output_path)[0] + ext
+                            if os.path.exists(src_ext):
+                                shutil.move(src_ext, dst_ext)
+                                logging.info(f"Moved {ext}: {src_ext} -> {dst_ext}")
+                    else:
+                        logging.warning(f"Source file not found: {src_path}")
 
 def main():
-    global SERIES_NAME
-    if len(sys.argv) < 2:
-        print("Usage: file_organizer.py \"Series Name\"")
+    parser = argparse.ArgumentParser(description="Organize media files for a series")
+    parser.add_argument("series_name", help="Name of the series (e.g., The A-Team)")
+    parser.add_argument("--move", action="store_true", help="Move files instead of just creating NFOs")
+    args = parser.parse_args()
+    
+    series_slug = setup_logging(args.series_name)
+    logging.info(f"=== File Organizer v1.0.0 Started for '{args.series_name}' ===")
+    
+    paths = load_paths()
+    tv_library_path = paths.get("TV_LIBRARY_PATH", "E:/media_library/tv_series")
+    json_folder = paths.get("JSON_FOLDER", "data")
+    logging.info(f"Using TV_LIBRARY_PATH = {tv_library_path}")
+    logging.info(f"Using JSON_FOLDER = {json_folder}")
+    
+    episodes = load_processed_json(args.series_name, json_folder)
+    if not episodes:
+        logging.warning("No episodes loaded. Exiting.")
         return
-    SERIES_NAME = sys.argv[1]
-    print("Starting File Organizer...")
-    processed_path = load_paths()
-    log_event(f"=== File Organizer v0.9.3 Started for '{SERIES_NAME}' ===")
-    log_event(f"Using SERIES_FOLDER_PATH = {SERIES_FOLDER_PATH}")
-    data = load_processed(processed_path)
-    kodi_watched = load_kodi_data()
-    log_event(f"Loaded {len(data.get('matches', {}))} matched and {len(data.get('unmatched', []))} unmatched episode groups from Processed.json")
-    group_and_write(data, kodi_watched)
-    log_event("NFO generation complete. No destructive operations performed.")
+    
+    organize_files(args.series_name, episodes, tv_library_path, args.move)
+    logging.info("Processing complete.")
 
 if __name__ == "__main__":
     main()
