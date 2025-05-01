@@ -158,3 +158,35 @@ Please respond to one or two:
 3. **Next Steps**: Map scripts, review `match_unmatched.py`, or focus on debugging?
 
 Thank you for the detailed notes and logs—your vision is coming together beautifully! I’ll wait for your feedback before proceeding.
+
+paths diagram:
+
+media_organizer/
+├── config/
+│   ├── paths.txt
+│   └── paths.example.txt
+├── data/
+│   └── the_a_team/
+│       ├── The_A-Team_Processed.json
+│       └── [The_A-Team.json after successful run]
+├── logs/
+│   └── the_a_team/
+│       ├── season_episode_builder.log
+│       ├── file_organizer.log
+│       └── ...
+├── scripts/
+│   ├── __init__.py
+│   ├── Season_Episode_builder.py
+│   ├── file_organizer.py
+│   ├── series_folder_crawler.py
+│   ├── kodi_db_exporter.py
+│   ├── providers/
+│   │   ├── __init__.py
+│   │   ├── tvmaze_provider.py
+│   │   ├── tmdb_provider.py
+│   │   ├── trakt_provider.py
+│   │   ├── rotten_tomatoes_provider.py
+│   └── ...
+├── plans/
+│   └── requirements.md
+└── README.md

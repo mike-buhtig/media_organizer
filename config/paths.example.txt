@@ -1,67 +1,88 @@
+# Configuration file for media_organizer scripts
+# Located in config/paths.txt
+# Sections: [general], [series], [meta_providers], [kodi], [tmdb], [trakt], [tvmaze], [rotten_tomatoes], [thresholds]
+# Add new series under [series], providers under [meta_providers], and adjust thresholds under [thresholds]
+
 [general]
-# Folder where all output .json files will be stored
-JSON_FOLDER = C:/Users/Public/NPVR-data/scripts/vlc/.JSON
+# Relative path for JSON output (e.g., data/the_a_team/The_A-Team.json)
+JSON_FOLDER = data
 
-# Root folder where recordings are stored
-RECORDINGS_FOLDER = D:/NEXT PVR/RecordingDirectory
+# Relative path for logs (e.g., logs/the_a_team/season_episode_builder.log)
+LOG_PATH = logs
 
-# Log output path
-LOG_PATH = C:/Users/Public/NPVR-data/scripts/vlc/logs
+# Relative path for temporary files
+TEMP_FOLDER = tmp
 
-# Working/temp directory
-TEMP_FOLDER = C:/Users/Public/NPVR-data/scripts/vlc/tmp
-
-# Operational settings
+# Operational settings for file_organizer.py and kodi_db_exporter.py
 USE_KODI = true
 USE_NEXTPVR = true
 OPERATION_MODE = move
 CREATE_NFO = true
 
-[kodi]
-# IP address for Kodi using adb for access
-KODI_IP = 192.168.0.127
-
-# Kodi metadata export template
-KODI_METADATA_TEMPLATE = C:/Users/Public/NPVR-data/scripts/vlc/.JSON/kodi_export.json
-
-# Optional path to ADB, or leave blank if on system path
-ADB_PATH =
-
-[tmdb]
-TMDB_API_KEY = yourtmdbapikey
-TMDB_PASSWORD = yourtmdbpassword
-
-[trakt]
-TRAKT_CLIENT_ID = traktclientid
-TRAKT_CLIENT_SECRET = traktclientsecret
-
-[tvmaze]
-TVMAZE_API_KEY = tvmazeapikey
+[series]
+# Add series as series_name_X = <name>, series_path_X = <path>
+# Example: series_name_8 = New Series, series_path_8 = D:/Recordings/New Series
+series_name_1 = The A-Team
+series_path_1 = D:/NEXT PVR/RecordingDirectory/The A-Team
+series_name_2 = Ax Men
+series_path_2 = D:/NEXT PVR/RecordingDirectory/Ax Men
+series_name_3 = FBI
+series_path_3 = D:/NEXT PVR/RecordingDirectory/FBI
+series_name_4 = Mission Impossible
+series_path_4 = D:/NEXT PVR/RecordingDirectory/Mission Impossible
+series_name_5 = The F.B.I
+series_path_5 = D:/NEXT PVR/RecordingDirectory/The F.B.I
+series_name_6 = Ancient Top 10
+series_path_6 = D:/NEXT PVR/RecordingDirectory/Ancient Top 10
+series_name_7 = Ancient Engineering
+series_path_7 = D:/NEXT PVR/RecordingDirectory/Ancient Engineering
 
 [meta_providers]
-# more providers can be added by creating the provider fetch script and adding the key name.
+# Add providers as <name> = enabled
+# Example: newprovider = enabled
 tvmaze = enabled
 tmdb = enabled
 trakt = enabled
+rotten_tomatoes = enabled
 
-[series_paths]
-# Path to existing series folder in flat format, no folders.  Each .ts or other media file must have an .xml metadata file.
-series_name_1 = Ax Men
-series_path_1 = D:/NEXT PVR/RecordingDirectory/Ax Men
+[kodi]
+# Settings for kodi_db_exporter.py
+KODI_IP = 192.168.0.127
+KODI_METADATA_TEMPLATE = data/kodi_export.json
+ADB_PATH =
 
-series_name_2 = FBI
-series_path_2 = D:/NEXT PVR/RecordingDirectory/FBI
+[tmdb]
+# API settings for tmdb_provider.py
+TMDB_API_KEY = TMDBsecret
+TMDB_PASSWORD = password
 
-series_name_3 = Mission Impossible
-series_path_3 = D:/NEXT PVR/RecordingDirectory/Mission Impossible
+[trakt]
+# API settings for trakt_provider.py
+TRAKT_CLIENT_ID = traktID
+TRAKT_CLIENT_SECRET = TraktSecret
 
-series_name_4 = The A-Team
-series_path_4 = D:/NEXT PVR/RecordingDirectory/The A-Team
+[tvmaze]
+# API settings for tvmaze_provider.py
+TVMAZE_API_KEY = TVMAZEsecret
 
-series_name_5 = The F.B.I
-series_path_5 = D:/NEXT PVR/RecordingDirectory/The F.B.I
+[rotten_tomatoes]
+# Settings for rotten_tomatoes_provider.py
+SCRAPE_DELAY = 0.5
+SEARCH_API_URL = https://serpapi.com/search
+SEARCH_API_KEY =
+
+[thresholds]
+# Matching thresholds for series_folder_crawler.py
+# PASS4_THRESHOLD: Default for 4th pass (higher = stricter, more tokens needed)
+# Per-series thresholds: pass4_threshold_<Series_Name>, pass2_threshold_<Series_Name>, etc.
+PASS4_THRESHOLD = 15
+pass4_threshold_Ax_Men = 12
+pass4_threshold_The_A-Team = 10
+pass4_threshold_Mission_Impossible = 10
+pass2_threshold_Ax_Men = 0.80
+pass3_threshold_Ax_Men = 0.80
 
 [library_paths]
-# These are the output paths, which will need to be shared with the media player ie kodi etc.
+# Output paths for file_organizer.py
 TV_LIBRARY_PATH = E:/media_library/tv_series
 MOVIE_LIBRARY_PATH = E:/media_library/movies
