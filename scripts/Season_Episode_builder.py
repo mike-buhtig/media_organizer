@@ -1,4 +1,3 @@
-```python
 import os
 import json
 import argparse
@@ -7,13 +6,22 @@ from datetime import datetime
 import importlib
 import sys
 from pathlib import Path
+from configparser import ConfigParser
 
-__version__ = "1.0.7"
+__version__ = "1.0.9"
 
 CHANGELOG = """
+1.0.9 (2025-05-01):
+- Updated load_providers() to support class-based (<name>c_provider, e.g., tvmazec_provider) and function-based (<name>f_provider, e.g., tvmazef_provider) providers
+- Class-based providers use get_series_metadata(series_name), return metadata directly
+- Function-based providers use get_metadata(series_name, config), read tmp/providerf_<name>.json
+- Prefix provider names in JSON output with providerc_ or providerf_ for clarity
+- Added tvmazec_provider, kept tvmazef_provider, tmdbf_provider, traktf_provider, rotten_tomatoesf_provider
+1.0.8 (2025-05-01):
+- Updated load_providers() to use function-based providers (get_metadata) instead of classes
+- Pass ConfigParser object to get_metadata()
 1.0.7 (2025-05-01):
-- Updated load_providers() to use correct class names (TvMazeProvider, TmdbProvider, TraktProvider, RottenTomatoesProvider)
-- Kept sys.path and providers.<provider_name>_provider imports
+- Updated load_providers() to use class names (TvMazeProvider, TmdbProvider, TraktProvider, RottenTomatoesProvider)
 1.0.6 (2025-04-30):
 - Fixed provider imports by adding scripts/ to sys.path and using absolute paths
 - Added __init__.py to scripts/ for package recognition
@@ -58,98 +66,125 @@ def setup_logging(series_name):
 def load_paths():
     paths = {}
     providers = []
+    config = ConfigParser()
     paths_file = os.path.join("config", "paths.txt")
     try:
-        with open(paths_file, "r") as f:
-            current_section = None
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.startswith("[") and line.endswith("]"):
-                    current_section = line[1:-1]
-                elif "=" in line:
-                    key, value = line.split("=", 1)
-                    key = key.strip()
-                    value = value.strip()
-                    if current_section == "library_paths" or current_section == "general":
-                        paths[key] = value
-                    elif current_section == "meta_providers" and value.lower() == "enabled":
-                        providers.append((f"provider_{key}", len(providers) + 1))
+        config.read(paths_file)
+        for section in config.sections():
+            if section in ("library_paths", "general"):
+                for key, value in config[section].items():
+                    paths[key] = value
+            elif section == "meta_providers":
+                for key, value in config[section].items():
+                    if value.lower() == "enabled":
+                        providers.append((key, len(providers) + 1))
                         logging.info(f"Added provider: {key} (priority {len(providers)})")
-                    elif current_section == "meta_providers":
+                    else:
                         logging.warning(f"Skipping invalid provider entry: {key} = {value}")
-    except FileNotFoundError:
-        logging.error(f"paths.txt not found at {paths_file}")
+    except Exception as e:
+        logging.error(f"Failed to read paths.txt at {paths_file}: {str(e)}")
         raise
     paths["JSON_FOLDER"] = paths.get("JSON_FOLDER", "data")
     paths["LOG_PATH"] = paths.get("LOG_PATH", "logs")
     logging.info(f"Loaded {len(providers)} provider configs from paths.txt")
-    return paths, providers
+    return paths, providers, config
 
-def load_providers(provider_configs):
-    provider_instances = []
-    # Add scripts/ to sys.path
+def load_providers(provider_configs, config):
+    providers = []
     script_dir = Path(__file__).parent
     sys.path.append(str(script_dir))
     
     for provider_key, priority in provider_configs:
-        provider_name = provider_key.replace("provider_", "")
+        # Extract base provider name (e.g., tvmaze from providerc_tvmaze)
+        if provider_key.startswith("providerc_"):
+            provider_name = provider_key.replace("providerc_", "")
+            provider_type = "class"
+            module_name = f"{provider_name}c_provider"
+        elif provider_key.startswith("providerf_"):
+            provider_name = provider_key.replace("providerf_", "")
+            provider_type = "function"
+            module_name = f"{provider_name}f_provider"
+        else:
+            logging.error(f"Invalid provider key: {provider_key}. Must start with providerc_ or providerf_")
+            continue
+        
+        provider_instance = None
+        
+        # Load provider
         try:
-            module_path = f"providers.{provider_name}_provider"
+            module_path = f"providers.{module_name}"
             logging.info(f"Attempting to import {module_path}")
             module = importlib.import_module(module_path)
             
-            # Try specific class names based on provider
-            class_names = []
-            if provider_name == "tvmaze":
-                class_names = ["TvMazeProvider", "TvmazeProvider", "TVmazeProvider", "TVMAZEProvider"]
-            elif provider_name == "tmdb":
-                class_names = ["TmdbProvider", "TMdbProvider", "TMDBProvider"]
-            elif provider_name == "trakt":
-                class_names = ["TraktProvider", "TRaktProvider", "TRAKTProvider"]
-            elif provider_name == "rotten_tomatoes":
-                class_names = ["RottenTomatoesProvider", "Rotten_tomatoesProvider", "ROTTEN_TOMATOESProvider"]
+            if provider_type == "class":
+                class_name = f"{provider_name.capitalize()}Provider"
+                provider_class = getattr(module, class_name, None)
+                if provider_class:
+                    provider_instance = provider_class(config)
+                    logging.info(f"Loaded class-based provider: providerc_{provider_name} (priority {priority})")
+                else:
+                    logging.error(f"No class {class_name} found in {module_path}")
+                    continue
             else:
-                class_names = [
-                    f"{provider_name.capitalize()}Provider",
-                    f"T{provider_name[1:].capitalize()}Provider",
-                    f"{provider_name.upper()}Provider"
-                ]
+                get_metadata_func = getattr(module, "get_metadata", None)
+                if get_metadata_func:
+                    provider_instance = get_metadata_func
+                    logging.info(f"Loaded function-based provider: providerf_{provider_name} (priority {priority})")
+                else:
+                    logging.error(f"No get_metadata function found in {module_path}")
+                    continue
                 
-            provider_class = None
-            for class_name in class_names:
-                try:
-                    provider_class = getattr(module, class_name)
-                    logging.info(f"Found class {class_name} in {module_path}")
-                    break
-                except AttributeError:
+            providers.append((provider_instance, provider_type, provider_name, priority))
+        
+        except (ImportError, AttributeError) as e:
+            logging.error(f"Failed to load provider {provider_key}: {str(e)}")
+    
+    return providers
+
+def fetch_metadata(series_name, providers, config):
+    metadata = {"series_name": series_name, "seasons": []}
+    temp_folder = config["general"]["TEMP_FOLDER"]
+    
+    for provider_instance, provider_type, provider_name, priority in providers:
+        provider_key = f"provider{provider_type[0]}_{provider_name}"
+        logging.info(f"Fetching metadata from provider: {provider_key} ({provider_type})")
+        try:
+            if provider_type == "class":
+                # Class-based provider: call get_series_metadata
+                provider_data = provider_instance.get_series_metadata(series_name)
+            else:
+                # Function-based provider: call get_metadata, read temp file
+                provider_instance(series_name, config)
+                temp_file = os.path.join(temp_folder, f"providerf_{provider_name}.json")
+                if os.path.exists(temp_file):
+                    with open(temp_file, "r", encoding="utf-8") as f:
+                        provider_data = json.load(f)
+                else:
+                    logging.warning(f"No temp file found for providerf_{provider_name} at {temp_file}")
                     continue
             
-            if not provider_class:
-                logging.error(f"No valid provider class found in {module_path}. Tried: {', '.join(class_names)}")
-                continue
-            
-            provider_instances.append(provider_class())
-            logging.info(f"Successfully loaded provider: {provider_name} (priority {priority})")
-        except Exception as e:
-            logging.error(f"Failed to load provider {provider_name}: {str(e)}")
-    return provider_instances
-
-def fetch_metadata(series_name, providers):
-    metadata = {"series_name": series_name, "seasons": []}
-    for provider in providers:
-        logging.info(f"Fetching metadata from {provider.__class__.__name__}")
-        try:
-            provider_data = provider.get_series_metadata(series_name)
-            for season in provider_data.get("seasons", []):
-                existing_season = next((s for s in metadata["seasons"] if s["season_number"] == season["season_number"]), None)
+            # Merge seasons and episodes
+            for season_num, episodes in provider_data.get("seasons", {}).items():
+                season_num = int(season_num)
+                existing_season = next((s for s in metadata["seasons"] if s["season_number"] == season_num), None)
                 if not existing_season:
-                    metadata["seasons"].append(season)
+                    metadata["seasons"].append({
+                        "season_number": season_num,
+                        "episodes": episodes
+                    })
                 else:
-                    existing_season["episodes"].extend(season.get("episodes", []))
+                    existing_season["episodes"].extend(episodes)
+                
+            logging.info(f"Processed metadata from {provider_key} ({provider_type})")
+                
         except Exception as e:
-            logging.error(f"Error fetching from {provider.__class__.__name__}: {str(e)}")
+            logging.error(f"Error fetching from {provider_key} ({provider_type}): {str(e)}")
+    
+    # Sort seasons and episodes
+    metadata["seasons"].sort(key=lambda x: x["season_number"])
+    for season in metadata["seasons"]:
+        season["episodes"].sort(key=lambda x: x["episode_number"])
+    
     return metadata
 
 def save_metadata(series_name, metadata, json_folder):
@@ -158,7 +193,7 @@ def save_metadata(series_name, metadata, json_folder):
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{series_name}.json")
     
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     logging.info(f"Saved metadata to {output_path}")
 
@@ -170,16 +205,16 @@ def main():
     series_slug = setup_logging(args.series)
     logging.info(f"=== Season Episode Builder v{__version__} Started for '{args.series}' ===")
     
-    paths, provider_configs = load_paths()
+    paths, provider_configs, config = load_paths()
     json_folder = paths["JSON_FOLDER"]
     logging.info(f"Using JSON_FOLDER = {json_folder}")
     
-    providers = load_providers(provider_configs)
+    providers = load_providers(provider_configs, config)
     if not providers:
         logging.error("No providers loaded. Exiting.")
         return
     
-    metadata = fetch_metadata(args.series, providers)
+    metadata = fetch_metadata(args.series, providers, config)
     save_metadata(args.series, metadata, json_folder)
 
 if __name__ == "__main__":
