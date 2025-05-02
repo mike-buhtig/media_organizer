@@ -1,4 +1,3 @@
-```python
 # providers/tvmazec_provider.py v1.0.0
 # Fetches metadata from TVmaze using a class-based interface
 # Returns metadata directly instead of writing to temp file
@@ -71,4 +70,3 @@ class TvMazeProvider:
         except Exception as e:
             print(f"[providerc_tvmaze ERROR] {e}")
             return {}
-```

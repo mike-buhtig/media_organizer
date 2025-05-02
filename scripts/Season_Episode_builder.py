@@ -8,9 +8,14 @@ import sys
 from pathlib import Path
 from configparser import ConfigParser
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
 CHANGELOG = """
+1.0.10 (2025-05-02):
+- Fixed class name mismatch for tvmazec_provider (TvMazeProvider instead of TvmazeProvider)
+- Added provider_class_names mapping to handle specific class names
+- Ensure tmp/ folder exists before fetching metadata
+- Added detailed error logging for function-based provider get_metadata() calls
 1.0.9 (2025-05-01):
 - Updated load_providers() to support class-based (<name>c_provider, e.g., tvmazec_provider) and function-based (<name>f_provider, e.g., tvmazef_provider) providers
 - Class-based providers use get_series_metadata(series_name), return metadata directly
@@ -94,6 +99,14 @@ def load_providers(provider_configs, config):
     script_dir = Path(__file__).parent
     sys.path.append(str(script_dir))
     
+    # Map provider names to their exact class names
+    provider_class_names = {
+        "tvmaze": "TvMazeProvider",
+        "tmdb": "TmdbProvider",
+        "trakt": "TraktProvider",
+        "rotten_tomatoes": "RottenTomatoesProvider"
+    }
+    
     for provider_key, priority in provider_configs:
         # Extract base provider name (e.g., tvmaze from providerc_tvmaze)
         if provider_key.startswith("providerc_"):
@@ -117,7 +130,7 @@ def load_providers(provider_configs, config):
             module = importlib.import_module(module_path)
             
             if provider_type == "class":
-                class_name = f"{provider_name.capitalize()}Provider"
+                class_name = provider_class_names.get(provider_name, f"{provider_name.capitalize()}Provider")
                 provider_class = getattr(module, class_name, None)
                 if provider_class:
                     provider_instance = provider_class(config)
@@ -145,6 +158,10 @@ def fetch_metadata(series_name, providers, config):
     metadata = {"series_name": series_name, "seasons": []}
     temp_folder = config["general"]["TEMP_FOLDER"]
     
+    # Ensure temp folder exists
+    os.makedirs(temp_folder, exist_ok=True)
+    logging.info(f"Ensured temp folder exists: {temp_folder}")
+    
     for provider_instance, provider_type, provider_name, priority in providers:
         provider_key = f"provider{provider_type[0]}_{provider_name}"
         logging.info(f"Fetching metadata from provider: {provider_key} ({provider_type})")
@@ -154,7 +171,11 @@ def fetch_metadata(series_name, providers, config):
                 provider_data = provider_instance.get_series_metadata(series_name)
             else:
                 # Function-based provider: call get_metadata, read temp file
-                provider_instance(series_name, config)
+                try:
+                    provider_instance(series_name, config)
+                except Exception as e:
+                    logging.error(f"Error in {provider_key} get_metadata(): {str(e)}")
+                    continue
                 temp_file = os.path.join(temp_folder, f"providerf_{provider_name}.json")
                 if os.path.exists(temp_file):
                     with open(temp_file, "r", encoding="utf-8") as f:

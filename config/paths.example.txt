@@ -40,10 +40,11 @@ series_path_7 = D:/NEXT PVR/RecordingDirectory/Ancient Engineering
 [meta_providers]
 # Add providers as <name> = enabled
 # Example: newprovider = enabled
-tvmaze = enabled
-tmdb = enabled
-trakt = enabled
-rotten_tomatoes = enabled
+providerc_tvmaze = enabled
+providerf_tvmaze = enabled
+providerf_tmdb = enabled
+providerf_trakt = enabled
+providerf_rotten_tomatoes = enabled
 
 [kodi]
 # Settings for kodi_db_exporter.py
