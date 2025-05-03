@@ -8,9 +8,13 @@ import sys
 from pathlib import Path
 from configparser import ConfigParser
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 
 CHANGELOG = """
+1.0.11 (2025-05-02):
+- Fixed temp file naming to read tmp/provider_<name>.json (e.g., provider_tvmaze.json) instead of tmp/providerf_<name>.json for function-based providers
+- Added logging of temp file contents on successful read
+- Kept tmp/ folder creation and detailed error logging from v1.0.10
 1.0.10 (2025-05-02):
 - Fixed class name mismatch for tvmazec_provider (TvMazeProvider instead of TvmazeProvider)
 - Added provider_class_names mapping to handle specific class names
@@ -176,10 +180,12 @@ def fetch_metadata(series_name, providers, config):
                 except Exception as e:
                     logging.error(f"Error in {provider_key} get_metadata(): {str(e)}")
                     continue
-                temp_file = os.path.join(temp_folder, f"providerf_{provider_name}.json")
+                temp_file = os.path.join(temp_folder, f"provider_{provider_name}.json")
                 if os.path.exists(temp_file):
                     with open(temp_file, "r", encoding="utf-8") as f:
                         provider_data = json.load(f)
+                        logging.info(f"Read temp file for {provider_key}: {temp_file}")
+                        logging.debug(f"Temp file contents: {json.dumps(provider_data, indent=2)}")
                 else:
                     logging.warning(f"No temp file found for providerf_{provider_name} at {temp_file}")
                     continue

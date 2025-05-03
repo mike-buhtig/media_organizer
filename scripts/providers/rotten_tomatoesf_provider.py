@@ -1,4 +1,4 @@
-# rotten_tomatoes_provider.py v1.0.8
+# rotten_tomatoesf_provider.py v1.0.9
 # Fetches metadata from Rotten Tomatoes and writes standardized output to a temp file
 #
 # Requirements:
@@ -15,12 +15,14 @@
 # [1.0.6] - 2025-05-08: Used episodes page for counting, bypassed SSL, set fallback to 20
 # [1.0.7] - 2025-05-09: Handled synopsis dropdown, fixed air dates, reduced selenium retries
 # [1.0.8] - 2025-05-10: Used <rt-text slot="content"> for synopsis, <rt-text slot="metadataProp"> for air date, minimized selenium
+# [1.0.9] - 2025-05-03: Added cleanup of tmp/provider_rotten_tomatoes.json at start of get_metadata()
 
 import os
 import json
 import requests
 import re
 import time
+import sys
 from datetime import datetime
 from configparser import ConfigParser
 from bs4 import BeautifulSoup
@@ -96,6 +98,12 @@ def get_metadata(title, config):
     log_dir = config["general"]["LOG_PATH"]
     temp_file = os.path.join(config["general"]["TEMP_FOLDER"], "provider_rotten_tomatoes.json")
     delay = float(config["rotten_tomatoes"].get("SCRAPE_DELAY", 0.5))
+    
+    # Delete existing temp file to prevent stale data
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
+        log_message(f"Deleted existing temp file: {temp_file}", log_dir)
+    
     series = normalize_series_name(title)
     data = {"seasons": {}}
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124"}

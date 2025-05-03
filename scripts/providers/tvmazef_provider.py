@@ -1,76 +1,90 @@
-# providers/tvmaze_provider.py v 1.0.1
-# Fetches metadata from TVmaze and writes standardized output to a temp file
+# providers/trakt_provider.py V 1.0.2
+# Fetches metadata from Trakt and writes standardized output to a temp file
 # Change 1: Added clean_title function to strip quotes and backslashes from episode titles
-# Change 2: Applied title cleaning to ep.get("name") to prevent malformed titles (e.g., "\"By Air, Land and Sea\"")
+# Change 2: Applied title cleaning to ep.get("title") to fix malformed titles (e.g., "\"By Air, Land and Sea\"")
+# Change 3: Updated seasons endpoint to use ?extended=full,episodes to include episode overviews
+# Change 4: Added logging for missing episode overviews
 
 import os
-import requests
 import json
+import requests
 import re
-import html
 from configparser import ConfigParser
 
-def normalize_title(title):
-    return re.sub(r"[`‘’´]", "'", title.strip().lower()) if title else ""
+TRAKT_API = "https://api.trakt.tv"
 
 def clean_title(title):
     if not title:
         return ""
     cleaned = re.sub(r'^"|"$|\\', '', title.strip())
     if cleaned != title:
-        print(f"[TVMAZE] Cleaned title: '{title}' -> '{cleaned}'")
+        print(f"[TRAKT] Cleaned title: '{title}' -> '{cleaned}'")
     return cleaned
 
 def get_metadata(title, config: ConfigParser):
     base_temp = config["general"]["TEMP_FOLDER"]
+    client_id = config["trakt"]["TRAKT_CLIENT_ID"]
+    headers = {
+        "Content-Type": "application/json",
+        "trakt-api-version": "2",
+        "trakt-api-key": client_id
+    }
+
     os.makedirs(base_temp, exist_ok=True)
 
-    search_url = f"https://api.tvmaze.com/singlesearch/shows?q={requests.utils.quote(title)}"
-    episodes_url_template = "https://api.tvmaze.com/shows/{id}/episodes?specials=1"
-
     try:
-        show_resp = requests.get(search_url)
-        if show_resp.status_code != 200:
-            print("[TVMAZE] Show not found.")
+        search_url = f"{TRAKT_API}/search/show?query={requests.utils.quote(title)}"
+        resp = requests.get(search_url, headers=headers)
+        if resp.status_code != 200 or not resp.json():
+            print("[TRAKT] No matching show found.")
             return
 
-        show_data = show_resp.json()
-        show_id = show_data.get("id")
-        episodes_url = episodes_url_template.format(id=show_id)
-        ep_resp = requests.get(episodes_url)
-        episodes = ep_resp.json() if ep_resp.status_code == 200 else []
+        show = resp.json()[0]["show"]
+        slug = show["ids"]["slug"]
+
+        summary_url = f"{TRAKT_API}/shows/{slug}?extended=full"
+        summary_resp = requests.get(summary_url, headers=headers)
+        summary = summary_resp.json() if summary_resp.status_code == 200 else {}
+
+        seasons_url = f"{TRAKT_API}/shows/{slug}/seasons?extended=full,episodes"
+        seasons_resp = requests.get(seasons_url, headers=headers)
+        all_seasons = seasons_resp.json() if seasons_resp.status_code == 200 else []
 
         output = {
-            "title": show_data.get("name"),
-            "id": show_id,
+            "title": show.get("title"),
+            "id": show["ids"]["trakt"],
             "type": "tv",
-            "overview": html.unescape(re.sub("<[^>]+>", "", show_data.get("summary", ""))),
-            "first_air_date": show_data.get("premiered"),
+            "overview": summary.get("overview", ""),
+            "first_air_date": summary.get("first_aired"),
             "seasons": {}
         }
 
-        for ep in episodes:
-            s = ep.get("season", 0)
-            e = ep.get("number")
-            if e is None or e == 0:
-                continue
+        for season in all_seasons:
+            snum = season.get("number")
+            episodes = season.get("episodes", [])
+            for ep in episodes:
+                ep_title = clean_title(ep.get("title"))
+                ep_overview = ep.get("overview", "")
+                if not ep_overview:
+                    print(f"[TRAKT] Missing overview for S{snum:02d}E{ep.get('number'):02d}")
+                ep_data = {
+                    "episode_number": ep.get("number"),
+                    "air_date": ep.get("first_aired"),
+                    "titles": {"trakt": ep_title},
+                    "overviews": {"trakt": ep_overview},
+                    "ids": {"trakt": ep["ids"]["trakt"]}
+                }
+                output["seasons"].setdefault(snum, []).append(ep_data)
 
-            ep_title = clean_title(ep.get("name"))
-            ep_data = {
-                "episode_number": e,
-                "air_date": ep.get("airdate"),
-                "titles": {"tvmaze": ep_title},
-                "overviews": {"tvmaze": html.unescape(re.sub("<[^>]+>", "", ep.get("summary") or ""))},
-                "ids": {"tvmaze": ep.get("id")}
-            }
-
-            output["seasons"].setdefault(s, []).append(ep_data)
-
-        output_path = os.path.join(base_temp, "provider_tvmaze.json")
+        output_path = os.path.join(base_temp, "provider_trakt.json")
+        # Delete existing temp file to prevent stale data
+        if os.path.exists(output_path):
+            os.remove(output_path)
+            print(f"[tvmazef] Deleted existing temp file: {output_path}")        
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2)
 
-        print(f"[TVMAZE] Metadata written to {output_path}")
+        print(f"[TRAKT] Metadata written to {output_path}")
 
     except Exception as e:
-        print(f"[TVMAZE ERROR] {e}")
+        print(f"[TRAKT ERROR] {e}")
