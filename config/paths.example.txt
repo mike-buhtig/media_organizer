@@ -42,9 +42,13 @@ series_path_7 = D:/NEXT PVR/RecordingDirectory/Ancient Engineering
 # Example: newprovider = enabled
 providerc_tvmaze = enabled
 providerf_tvmaze = enabled
+providerC_tmdb = enabled
 providerf_tmdb = enabled
+providerC_trakt = enabled
 providerf_trakt = enabled
+providerC_rotten_tomatoes = enabled
 providerf_rotten_tomatoes = enabled
+providerC_rotten_tomatoes = enabled
 
 [kodi]
 # Settings for kodi_db_exporter.py
