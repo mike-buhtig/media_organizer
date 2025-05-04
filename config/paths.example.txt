@@ -38,17 +38,16 @@ series_name_7 = Ancient Engineering
 series_path_7 = D:/NEXT PVR/RecordingDirectory/Ancient Engineering
 
 [meta_providers]
-# Add providers as <name> = enabled
-# Example: newprovider = enabled
-providerc_tvmaze = enabled
-providerf_tvmaze = enabled
-providerC_tmdb = enabled
-providerf_tmdb = enabled
-providerC_trakt = enabled
-providerf_trakt = enabled
-providerC_rotten_tomatoes = enabled
-providerf_rotten_tomatoes = enabled
-providerC_rotten_tomatoes = enabled
+# Format for Class Based providers: <provider_name> = enabled,<priority number>,<module_path>,<class_name>
+# Format for Function based providers: <provider_name> = enabled,<priority number>,<module_path>
+providerc_tvmaze = enabled,1,scripts.providers.tvmazec_provider,TVmazeProvider 
+providerf_tvmaze = enabled,2,scripts.providers.tvmazef_provider 
+providerc_tmdb = enabled,3,scripts.providers.tmdbc_provider,TMDBProvider 
+providerf_tmdb = enabled,4,scripts.providers.tmdbf_provider 
+providerc_trakt = enabled,5,scripts.providers.traktc_provider,TraktProvider 
+providerf_trakt = enabled,6,scripts.providers.traktf_provider 
+providerc_rotten_tomatoes = enabled,7,scripts.providers.rotten_tomatoesc_provider,RottenTomatoesProvider 
+providerf_rotten_tomatoes = enabled,8,scripts.providers.rotten_tomatoesf_provider
 
 [kodi]
 # Settings for kodi_db_exporter.py
@@ -58,17 +57,17 @@ ADB_PATH =
 
 [tmdb]
 # API settings for tmdb_provider.py
-TMDB_API_KEY = TMDBsecret
-TMDB_PASSWORD = password
+TMDB_API_KEY = <tmdb api key>
+TMDB_PASSWORD = <tmdb password>
 
 [trakt]
 # API settings for trakt_provider.py
-TRAKT_CLIENT_ID = traktID
-TRAKT_CLIENT_SECRET = TraktSecret
+TRAKT_CLIENT_ID = <trakt Client ID>
+TRAKT_CLIENT_SECRET = <trakt Client Secret>
 
 [tvmaze]
 # API settings for tvmaze_provider.py
-TVMAZE_API_KEY = TVMAZEsecret
+TVMAZE_API_KEY = <tvmaze api key>
 
 [rotten_tomatoes]
 # Settings for rotten_tomatoes_provider.py
