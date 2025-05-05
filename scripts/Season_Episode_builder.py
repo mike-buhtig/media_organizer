@@ -8,13 +8,9 @@ import sys
 from pathlib import Path
 from configparser import ConfigParser
 
-__version__ = "1.0.11"
+__version__ = "1.0.10"
 
 CHANGELOG = """
-1.0.11 (2025-05-02):
-- Fixed temp file naming to read tmp/provider_<name>.json (e.g., provider_tvmaze.json) instead of tmp/providerf_<name>.json for function-based providers
-- Added logging of temp file contents on successful read
-- Kept tmp/ folder creation and detailed error logging from v1.0.10
 1.0.10 (2025-05-02):
 - Fixed class name mismatch for tvmazec_provider (TvMazeProvider instead of TvmazeProvider)
 - Added provider_class_names mapping to handle specific class names
@@ -63,7 +59,7 @@ def setup_logging(series_name):
     log_dir = os.path.join("logs", series_slug)
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "season_episode_builder.log")
-    
+
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
@@ -102,7 +98,7 @@ def load_providers(provider_configs, config):
     providers = []
     script_dir = Path(__file__).parent
     sys.path.append(str(script_dir))
-    
+
     # Map provider names to their exact class names
     provider_class_names = {
         "tvmaze": "TvMazeProvider",
@@ -110,7 +106,7 @@ def load_providers(provider_configs, config):
         "trakt": "TraktProvider",
         "rotten_tomatoes": "RottenTomatoesProvider"
     }
-    
+
     for provider_key, priority in provider_configs:
         # Extract base provider name (e.g., tvmaze from providerc_tvmaze)
         if provider_key.startswith("providerc_"):
@@ -124,15 +120,15 @@ def load_providers(provider_configs, config):
         else:
             logging.error(f"Invalid provider key: {provider_key}. Must start with providerc_ or providerf_")
             continue
-        
+
         provider_instance = None
-        
+
         # Load provider
         try:
             module_path = f"providers.{module_name}"
             logging.info(f"Attempting to import {module_path}")
             module = importlib.import_module(module_path)
-            
+
             if provider_type == "class":
                 class_name = provider_class_names.get(provider_name, f"{provider_name.capitalize()}Provider")
                 provider_class = getattr(module, class_name, None)
@@ -150,22 +146,22 @@ def load_providers(provider_configs, config):
                 else:
                     logging.error(f"No get_metadata function found in {module_path}")
                     continue
-                
+
             providers.append((provider_instance, provider_type, provider_name, priority))
-        
+
         except (ImportError, AttributeError) as e:
             logging.error(f"Failed to load provider {provider_key}: {str(e)}")
-    
+
     return providers
 
 def fetch_metadata(series_name, providers, config):
     metadata = {"series_name": series_name, "seasons": []}
     temp_folder = config["general"]["TEMP_FOLDER"]
-    
+
     # Ensure temp folder exists
     os.makedirs(temp_folder, exist_ok=True)
     logging.info(f"Ensured temp folder exists: {temp_folder}")
-    
+
     for provider_instance, provider_type, provider_name, priority in providers:
         provider_key = f"provider{provider_type[0]}_{provider_name}"
         logging.info(f"Fetching metadata from provider: {provider_key} ({provider_type})")
@@ -180,16 +176,14 @@ def fetch_metadata(series_name, providers, config):
                 except Exception as e:
                     logging.error(f"Error in {provider_key} get_metadata(): {str(e)}")
                     continue
-                temp_file = os.path.join(temp_folder, f"provider_{provider_name}.json")
+                temp_file = os.path.join(temp_folder, f"providerf_{provider_name}.json")
                 if os.path.exists(temp_file):
                     with open(temp_file, "r", encoding="utf-8") as f:
                         provider_data = json.load(f)
-                        logging.info(f"Read temp file for {provider_key}: {temp_file}")
-                        logging.debug(f"Temp file contents: {json.dumps(provider_data, indent=2)}")
                 else:
                     logging.warning(f"No temp file found for providerf_{provider_name} at {temp_file}")
                     continue
-            
+
             # Merge seasons and episodes
             for season_num, episodes in provider_data.get("seasons", {}).items():
                 season_num = int(season_num)
@@ -201,17 +195,17 @@ def fetch_metadata(series_name, providers, config):
                     })
                 else:
                     existing_season["episodes"].extend(episodes)
-                
+
             logging.info(f"Processed metadata from {provider_key} ({provider_type})")
-                
+
         except Exception as e:
             logging.error(f"Error fetching from {provider_key} ({provider_type}): {str(e)}")
-    
+
     # Sort seasons and episodes
     metadata["seasons"].sort(key=lambda x: x["season_number"])
     for season in metadata["seasons"]:
         season["episodes"].sort(key=lambda x: x["episode_number"])
-    
+
     return metadata
 
 def save_metadata(series_name, metadata, json_folder):
@@ -219,7 +213,7 @@ def save_metadata(series_name, metadata, json_folder):
     output_dir = os.path.join(json_folder, series_slug)
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{series_name}.json")
-    
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     logging.info(f"Saved metadata to {output_path}")
@@ -228,19 +222,19 @@ def main():
     parser = argparse.ArgumentParser(description="Build episode metadata for a series")
     parser.add_argument("--series", required=True, help="Name of the series (e.g., The A-Team)")
     args = parser.parse_args()
-    
+
     series_slug = setup_logging(args.series)
     logging.info(f"=== Season Episode Builder v{__version__} Started for '{args.series}' ===")
-    
+
     paths, provider_configs, config = load_paths()
     json_folder = paths["JSON_FOLDER"]
     logging.info(f"Using JSON_FOLDER = {json_folder}")
-    
+
     providers = load_providers(provider_configs, config)
     if not providers:
         logging.error("No providers loaded. Exiting.")
         return
-    
+
     metadata = fetch_metadata(args.series, providers, config)
     save_metadata(args.series, metadata, json_folder)
 
